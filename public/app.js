@@ -1,12 +1,41 @@
-'use strict';
+/***
+ * Excerpted from "Serverless Single Page Apps",
+ * published by The Pragmatic Bookshelf.
+ * Copyrights apply to this code. It may not be used to create training material,
+ * courses, books, articles, and the like. Contact us if you are in doubt.
+ * We make no guarantees that this code is fit for any purpose.
+ * Visit http://www.pragmaticprogrammer.com/titles/brapps for more book information.
+***/
+"use strict";
+
 var learnjs = {};
 
-learnjs.problemView = function () {
-  return $('<div class="problem-view">').text('Coming soon!')
+learnjs.problems = [
+  {
+    description: "What is truth?",
+    code: "function problem() { return __; }"
+  },
+  {
+    description: "Simple Math",
+    code: "function problem() { return 42 === 6 * __; }"
+  }
+];
+
+learnjs.problemView = function (data) {
+  var problemNumber = parseInt(data, 10);
+  var view = $('.templates .problem-view').clone();
+  view.find('.title').text('Problem #' + problemNumber);
+  learnjs.applyObject(learnjs.problems[problemNumber - 1], view);
+  return view;
 }
 
-learnjs.showView = function (hash) {
+learnjs.applyObject = function (obj, elem) {
+  for (var key in obj) {
+    elem.find('[data-name="' + key + '"]').text(obj[key]);
+  }
+};
 
+learnjs.showView = function (hash) {
   var routes = {
     '#problem': learnjs.problemView
   };
@@ -15,12 +44,6 @@ learnjs.showView = function (hash) {
   if (viewFn) {
     $('.view-container').empty().append(viewFn(hashParts[1]));
   }
-}
-
-learnjs.problemView = function (problemNumber) {
-  var view = $('.templates .problem-view').clone();
-  view.find('.title').text('Problem #' + problemNumber);
-  return view;
 }
 
 learnjs.appOnReady = function () {
