@@ -9,7 +9,7 @@
 "use strict";
 
 var learnjs = {
-  poolId: 'us-east-1:aa0e6d15-02da-4304-a819-f316506257e0'
+  poolId: 'us-east-1:c305b830-703c-4f3e-8f32-aa4141dde196'
 };
 
 learnjs.identity = new $.Deferred();
@@ -28,6 +28,76 @@ learnjs.problems = [
 learnjs.triggerEvent = function (name, args) {
   $('.view-container>*').trigger(name, args);
 }
+
+learnjs.sendDbRequest = function (req, retry) {
+  var promise = new $.Deferred();
+  req.on('error', function (error) {
+    if (error.code === "CredentialsError") {
+      learnjs.identity.then(function (identity) {
+        return identity.refresh().then(function () {
+          return retry();
+        }, function () {
+          promise.reject(resp);
+        });
+      });
+    } else {
+      promise.reject(error);
+    }
+  });
+  req.on('success', function (resp) {
+    promise.resolve(resp.data);
+  });
+  req.send();
+  return promise;
+}
+
+learnjs.fetchAnswer = function (problemId) {
+  return learnjs.identity.then(function (identity) {
+    var db = new AWS.DynamoDB.DocumentClient();
+    var item = {
+      TableName: 'learnjs',
+      Key: {
+        userId: identity.id,
+        problemId: problemId
+      }
+    };
+    return learnjs.sendDbRequest(db.get(item), function () {
+      return learnjs.fetchAnswer(problemId);
+    })
+  });
+};
+
+learnjs.countAnswers = function (problemId) {
+  return learnjs.identity.then(function (identity) {
+    var db = new AWS.DynamoDB.DocumentClient();
+    var params = {
+      TableName: 'learnjs',
+      Select: 'COUNT',
+      FilterExpression: 'problemId = :problemId',
+      ExpressionAttributeValues: { ':problemId': problemId }
+    };
+    return learnjs.sendDbRequest(db.scan(params), function () {
+      return learnjs.countAnswers(problemId);
+    })
+  });
+}
+
+learnjs.saveAnswer = function (problemId, answer) {
+  return learnjs.identity.then(function (identity) {
+    var db = new AWS.DynamoDB.DocumentClient();
+    var item = {
+      TableName: 'learnjs',
+      Item: {
+        userId: identity.id,
+        problemId: problemId,
+        answer: answer
+      }
+    };
+    return learnjs.sendDbRequest(db.put(item), function () {
+      return learnjs.saveAnswer(problemId, answer);
+    })
+  });
+};
 
 learnjs.template = function (name) {
   return $('.templates .' + name).clone();
@@ -69,6 +139,7 @@ learnjs.problemView = function (data) {
   var view = learnjs.template('problem-view');
   var problemData = learnjs.problems[problemNumber - 1];
   var resultFlash = view.find('.result');
+  var answer = view.find('.answer');
 
   function checkAnswer() {
     var answer = view.find('.answer').val();
@@ -80,11 +151,13 @@ learnjs.problemView = function (data) {
     if (checkAnswer()) {
       var flashContent = learnjs.buildCorrectFlash(problemNumber);
       learnjs.flashElement(resultFlash, flashContent);
+      learnjs.saveAnswer(problemNumber, answer.val());
     } else {
       learnjs.flashElement(resultFlash, 'Incorrect!');
     }
     return false;
   }
+
 
   if (problemNumber < learnjs.problems.length) {
     var buttonItem = learnjs.template('skip-btn');
@@ -94,6 +167,12 @@ learnjs.problemView = function (data) {
       buttonItem.remove();
     });
   }
+
+  learnjs.fetchAnswer(problemNumber).then(function (data) {
+    if (data.Item) {
+      answer.val(data.Item.answer);
+    }
+  });
 
   view.find('.check-btn').click(checkAnswerClick);
   view.find('.title').text('Problem #' + problemNumber);
@@ -137,10 +216,13 @@ learnjs.appOnReady = function () {
 }
 
 learnjs.awsRefresh = function () {
+  console.log("got here0");
   var deferred = new $.Deferred();
   AWS.config.credentials.refresh(function (err) {
     if (err) {
+      console.log(err);
       deferred.reject(err);
+      console.log("got here0b");
     } else {
       deferred.resolve(AWS.config.credentials.identityId);
     }
@@ -150,6 +232,7 @@ learnjs.awsRefresh = function () {
 
 function googleSignIn(googleUser) {
   var id_token = googleUser.getAuthResponse().id_token;
+  // console.log(id_token);
   AWS.config.update({
     region: 'us-east-1',
     credentials: new AWS.CognitoIdentityCredentials({
